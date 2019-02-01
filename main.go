@@ -2,24 +2,57 @@ package main
 
 import (
 	"encoding/json"
-  "log"
-  "net/http"
-  "github.com/gorilla/mux"
+	"fmt"
+	"net/http"
+
+	"github.com/gorilla/mux"
 )
 
 func main() {
-    router := mux.NewRouter()
-    router.HandleFunc("/hello/{name}", SayHello).Methods("GET")
-		router.HandleFunc("/", Welcome).Methods("GET")
-    log.Fatal(http.ListenAndServe(":8000", router))
+	r := mux.NewRouter()
+
+	r = InjectRoutes(r)
+	r.Use(ParseResponse)
+	r.Use(Authenticate)
+
+	http.ListenAndServe(":8081", r)
 }
 
-func SayHello(w http.ResponseWriter, r *http.Request) {
-		params := mux.Vars(r)
-		message := "Hello, " + params["name"]
-		json.NewEncoder(w).Encode(message)
+/* Routes */
+func InjectRoutes(h *mux.Router) *mux.Router {
+	h.HandleFunc("/hi", HandleHi)
+	h.HandleFunc("/check", HandleCheck)
+
+	return h
 }
 
-func Welcome(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode("Welcome")
+func HandleHi(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("Hello")
+}
+
+func HandleCheck(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode("All OK")
+}
+
+/* Middlewares */
+func Authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var bearer string = r.Header.Get("Authorization")
+		if bearer == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode("You must authenticate")
+		} else {
+			fmt.Print("Received %s", bearer)
+			next.ServeHTTP(w, r)
+		}
+	})
+}
+
+func ParseResponse(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		next.ServeHTTP(w, r)
+	})
 }
